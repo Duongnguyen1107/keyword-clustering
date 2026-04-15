@@ -529,8 +529,19 @@ def main():
         url_df["site_niche"] = url_df["primary_niche"]
         url_df["site_niche_secondary"] = url_df["secondary_niche"]
 
-    # ── Save ──
-    url_df.to_csv(args.output, index=False)
+    # ── Save — giữ nguyên format gốc: site rows + ---PATH_DATA--- + url rows ──
+    with open(args.output, 'w', encoding='utf-8', newline='') as f:
+        # Phần 1: site-level rows (giữ nguyên từ raw)
+        if not site_df.empty:
+            site_df.to_csv(f, index=False)
+        else:
+            f.write('\n')
+
+        # Separator
+        f.write('---PATH_DATA---\n')
+
+        # Phần 2: URL rows với enriched columns
+        url_df.to_csv(f, index=False)
     print(f"\n✅ Saved: {args.output}")
     print(f"   {len(url_df)} URLs classified\n")
 
