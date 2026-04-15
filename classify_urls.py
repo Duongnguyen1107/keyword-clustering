@@ -384,32 +384,58 @@ def aggregate_site_niches(df: pd.DataFrame) -> pd.DataFrame:
 
 def parse_ga4_csv(path: str) -> tuple:
     """
-    Parse GA4 export CSV.
-    Returns (site_df, url_df) — cả hai có thể None nếu không detect được.
+    Parse GA4 export CSV với format 2 phần:
+    - Phần 1: site-level rows (date, site, sessions, amazon_clicks, ...)
+    - Phần 2: URL-level rows sau dòng ---PATH_DATA---
     """
-    df = pd.read_csv(path, dtype=str)
-    df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
+    with open(path, "r", encoding="utf-8-sig") as f:
+        raw = f.read()
 
-    # Detect URL rows: có cột 'path' hoặc column thứ 2 là path-like
-    if "path" in df.columns:
-        url_df = df[df["path"].notna() & df["path"].str.startswith("/")].copy()
-        site_df = df[~df["path"].str.startswith("/", na=False)].copy()
+    # Split tại separator
+    if "---PATH_DATA---" in raw:
+        site_part, url_part = raw.split("---PATH_DATA---", 1)
     else:
-        # Fallback: cột index 1 là path
-        cols = list(df.columns)
-        if len(cols) >= 2:
-            df = df.rename(columns={cols[1]: "path"})
-            url_df = df[df["path"].notna() & df["path"].str.startswith("/")].copy()
-            site_df = df[~df["path"].str.startswith("/", na=False)].copy()
-        else:
-            url_df = df.copy()
-            site_df = pd.DataFrame()
+        # Fallback: không có separator → coi toàn bộ là URL data
+        site_part = ""
+        url_part = raw
 
-    # Normalize numeric columns
-    for col in ["sessions", "amazon_clicks", "avg_duration", "bounce_rate"]:
+    # ── Parse site-level ──
+    site_df = pd.DataFrame()
+    if site_part.strip():
+        from io import StringIO
+        site_df = pd.read_csv(StringIO(site_part.strip()))
+        site_df.columns = [c.strip().lower().replace(" ", "_") for c in site_df.columns]
+        for col in ["sessions", "amazon_clicks", "bounce_rate", "avg_duration_sec"]:
+            if col in site_df.columns:
+                site_df[col] = pd.to_numeric(site_df[col], errors="coerce").fillna(0)
+
+    # ── Parse URL-level ──
+    from io import StringIO
+    # Bỏ dòng trống đầu url_part
+    url_part = url_part.strip()
+    url_df = pd.read_csv(StringIO(url_part))
+    # Normalize column names
+    url_df.columns = [c.strip().lower().replace(" ", "_") for c in url_df.columns]
+
+    # Rename columns cho chuẩn
+    rename_map = {
+        "path_sessions": "sessions",
+        "path_clicks":   "amazon_clicks",
+        "path_duration": "avg_duration",
+    }
+    url_df = url_df.rename(columns=rename_map)
+
+    # Bỏ rows không có path hợp lệ
+    if "path" in url_df.columns:
+        url_df = url_df[url_df["path"].notna()]
+        url_df = url_df[url_df["path"].str.startswith("/", na=False)]
+
+    # Normalize numeric
+    for col in ["sessions", "amazon_clicks", "avg_duration"]:
         if col in url_df.columns:
             url_df[col] = pd.to_numeric(url_df[col], errors="coerce").fillna(0)
 
+    url_df = url_df.reset_index(drop=True)
     return site_df, url_df
 
 
