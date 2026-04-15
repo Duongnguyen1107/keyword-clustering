@@ -413,7 +413,9 @@ def parse_ga4_csv(path: str) -> tuple:
     from io import StringIO
     # Bỏ dòng trống đầu url_part
     url_part = url_part.strip()
-    url_df = pd.read_csv(StringIO(url_part))
+    url_df = pd.read_csv(StringIO(url_part), skiprows=1)
+    url_df.columns = ['site', 'path', 'sessions', 'amazon_clicks', 'avg_duration', 'col6', 'col7']
+    url_df = url_df.drop(columns=['col6', 'col7'], errors='ignore')
     # Normalize column names
     url_df.columns = [c.strip().lower().replace(" ", "_") for c in url_df.columns]
 
